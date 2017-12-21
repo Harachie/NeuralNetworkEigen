@@ -124,19 +124,18 @@ struct TanhLayer
 
 };
 
-struct LinearLayer
+struct LinearInputLayer
 {
 	int Samples;
 	int Features;
 	int Outputs;
 
-	MatrixXd Y;
 	MatrixXd X;
 	MatrixXd W;
-	MatrixXd dYwrtX;
+	MatrixXd Y;
 	MatrixXd dYwrtW;
 
-	LinearLayer(int samples, int features, int outputs)
+	LinearInputLayer(int samples, int features, int outputs)
 	{
 		Samples = samples;
 		Features = features;
@@ -156,13 +155,49 @@ struct LinearLayer
 
 	void Backward(MatrixXd &topGradients)
 	{
-		dYwrtX = topGradients * W.transpose();
 		dYwrtW = X.transpose() * topGradients;
 	}
 
-	void UpdateX(double stepSize)
+	void UpdateW(double stepSize)
 	{
-		X = X - dYwrtX * stepSize;
+		W = W - dYwrtW * stepSize;
+	}
+
+
+};
+
+struct LinearLayer
+{
+	int Samples;
+	int Features;
+	int Outputs;
+
+	MatrixXd InternalX;
+	MatrixXd W;
+	MatrixXd Y;
+	MatrixXd dYwrtX;
+	MatrixXd dYwrtW;
+
+	LinearLayer(int samples, int features, int outputs)
+	{
+		Samples = samples;
+		Features = features;
+		Outputs = outputs;
+
+		W = MatrixXd(features, outputs);
+		W.setRandom();
+	}
+
+	void Forward(MatrixXd &X)
+	{
+		InternalX = X;
+		Y = X * W;
+	}
+
+	void Backward(MatrixXd &topGradients)
+	{
+		dYwrtX = topGradients * W.transpose(); //die gehen an den unteren layer weiter
+		dYwrtW = InternalX.transpose() * topGradients;
 	}
 
 	void UpdateW(double stepSize)
@@ -200,20 +235,20 @@ void Gates()
 
 void Layer()
 {
-	int samples = 10000;
+	int samples = 4;
 	int features = 2;
-	int hidden = 3;
-	int outputs = 2;
+	int inputNeurons = 3;
+	int hidden1Neurons = 2;
 	double e;
-	double stepSize = 0.00001;
+	double stepSize = 0.001;
 	size_t i = 0;
 
-	LinearLayer input(samples, features, hidden);
-	TanhLayer tanFirstActivation;
-	LinearLayer hiddenLayer(samples, hidden, outputs);
-	TanhLayer tanSecondActivation;
+	LinearInputLayer input(samples, features, inputNeurons);
+	TanhLayer tanhInputActivation;
+	LinearLayer hiddenLayer(samples, inputNeurons, hidden1Neurons);
+	TanhLayer tanhHidden1Activation;
 
-	MatrixXd targets(samples, outputs);
+	MatrixXd targets(samples, hidden1Neurons);
 	MatrixXd topGradients;
 
 	for (size_t i = 0; i < samples; i++)
@@ -226,26 +261,24 @@ void Layer()
 	do
 	{
 		input.Forward();
-		tanFirstActivation.Forward(input.Y);
-		hiddenLayer.X = tanFirstActivation.Y;
-		hiddenLayer.Forward();
-		tanSecondActivation.Forward(hiddenLayer.Y);
+		tanhInputActivation.Forward(input.Y);
+		hiddenLayer.Forward(tanhInputActivation.Y);
+		tanhHidden1Activation.Forward(hiddenLayer.Y);
 
 
+		topGradients = tanhHidden1Activation.Y - targets;
 
-		topGradients = tanSecondActivation.Y - targets;
-
-		tanSecondActivation.Backward(topGradients);
-		hiddenLayer.Backward(tanSecondActivation.dYwrtX);
-		tanFirstActivation.Backward(hiddenLayer.dYwrtX);
-		input.Backward(tanFirstActivation.dYwrtX);
+		tanhHidden1Activation.Backward(topGradients);
+		hiddenLayer.Backward(tanhHidden1Activation.dYwrtX);
+		tanhInputActivation.Backward(hiddenLayer.dYwrtX);
+		input.Backward(tanhInputActivation.dYwrtX);
 
 		hiddenLayer.UpdateW(stepSize);
 		input.UpdateW(stepSize);
 
-		if (i++ % 10 == 0)
+		if (i++ % 10000 == 0)
 		{
-			e = tanSecondActivation.CalculateError(targets);
+			e = tanhHidden1Activation.CalculateError(targets);
 			std::cout << e << std::endl;
 		}
 	} while (true);
