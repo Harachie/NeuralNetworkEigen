@@ -114,7 +114,7 @@ struct TanhLayer
 
 	void Backward(MatrixXd &topGradients)
 	{
-		dYwrtX = topGradients.cwiseProduct(Y.unaryExpr(&tanhDerivative)); //das ist wohl falsch... net von Z sonders von X sollte es sein (vll?) ne passt
+		dYwrtX = topGradients.cwiseProduct(Y.unaryExpr(&tanhDerivative));
 	}
 
 	double CalculateError(MatrixXd &targets)
@@ -158,7 +158,49 @@ struct LinearInputLayer
 		dYwrtW = X.transpose() * topGradients;
 	}
 
-	void UpdateW(double stepSize)
+	void Update(double learningRate)
+	{
+		W = W - dYwrtW * learningRate;
+	}
+
+
+};
+
+struct LinearInputBiasLayer
+{
+	int Samples;
+	int Features;
+	int Outputs;
+
+	MatrixXd X;
+	MatrixXd W;
+	MatrixXd Y;
+	MatrixXd dYwrtW;
+
+	LinearInputBiasLayer(int samples, int features, int outputs)
+	{
+		Samples = samples;
+		Features = features;
+		Outputs = outputs;
+
+		X = MatrixXd(samples, features + 1);
+		W = MatrixXd(features + 1, outputs);
+
+		X.setRandom();
+		W.setRandom();
+	}
+
+	void Forward()
+	{
+		Y = X * W;
+	}
+
+	void Backward(MatrixXd &topGradients)
+	{
+		dYwrtW = X.transpose() * topGradients;
+	}
+
+	void Update(double stepSize) //input layer can only update their W
 	{
 		W = W - dYwrtW * stepSize;
 	}
@@ -200,7 +242,50 @@ struct LinearLayer
 		dYwrtW = InternalX.transpose() * topGradients;
 	}
 
-	void UpdateW(double stepSize)
+	void Update(double stepSize)
+	{
+		W = W - dYwrtW * stepSize;
+	}
+
+
+};
+
+struct LinearBiasLayer
+{
+	int Samples;
+	int Features;
+	int Outputs;
+
+	MatrixXd InternalX;
+	MatrixXd W;
+	MatrixXd Y;
+	MatrixXd dYwrtX;
+	MatrixXd dYwrtW;
+
+	LinearBiasLayer(int samples, int features, int outputs)
+	{
+		Samples = samples;
+		Features = features;
+		Outputs = outputs;
+
+		InternalX = MatrixXd(samples, features + 1);
+		W = MatrixXd(features + 1, outputs);
+		W.setRandom();
+	}
+
+	void Forward(MatrixXd &X)
+	{
+		InternalX << X, MatrixXd(X.rows(), 1).setOnes();
+		Y = InternalX * W;
+	}
+
+	void Backward(MatrixXd &topGradients)
+	{
+		dYwrtX = topGradients * W.transpose().leftCols(Features); //die gehen an den unteren layer weiter
+		dYwrtW = InternalX.transpose() * topGradients;
+	}
+
+	void Update(double stepSize)
 	{
 		W = W - dYwrtW * stepSize;
 	}
@@ -239,14 +324,17 @@ void Layer()
 	int features = 2;
 	int inputNeurons = 3;
 	int hidden1Neurons = 2;
+	int outputNeurons = 2;
 	double e;
-	double stepSize = 0.001;
+	double learningRate = 0.01;
 	size_t i = 0;
 
-	LinearInputLayer input(samples, features, inputNeurons);
+	LinearInputBiasLayer input(samples, features, inputNeurons);
 	TanhLayer tanhInputActivation;
-	LinearLayer hiddenLayer(samples, inputNeurons, hidden1Neurons);
+	LinearBiasLayer hiddenLayer(samples, inputNeurons, hidden1Neurons);
 	TanhLayer tanhHidden1Activation;
+	LinearBiasLayer outputLayer(samples, hidden1Neurons, outputNeurons);
+	TanhLayer tanhOutputActivation;
 
 	MatrixXd targets(samples, hidden1Neurons);
 	MatrixXd topGradients;
@@ -264,24 +352,36 @@ void Layer()
 		tanhInputActivation.Forward(input.Y);
 		hiddenLayer.Forward(tanhInputActivation.Y);
 		tanhHidden1Activation.Forward(hiddenLayer.Y);
+		outputLayer.Forward(tanhHidden1Activation.Y);
+		tanhOutputActivation.Forward(outputLayer.Y);
 
 
-		topGradients = tanhHidden1Activation.Y - targets;
+		topGradients = tanhOutputActivation.Y - targets;
 
-		tanhHidden1Activation.Backward(topGradients);
+		tanhOutputActivation.Backward(topGradients);
+		outputLayer.Backward(tanhOutputActivation.dYwrtX);
+
+		tanhHidden1Activation.Backward(outputLayer.dYwrtX);
 		hiddenLayer.Backward(tanhHidden1Activation.dYwrtX);
+
 		tanhInputActivation.Backward(hiddenLayer.dYwrtX);
 		input.Backward(tanhInputActivation.dYwrtX);
 
-		hiddenLayer.UpdateW(stepSize);
-		input.UpdateW(stepSize);
+		outputLayer.Update(learningRate);
+		hiddenLayer.Update(learningRate);
+		input.Update(learningRate);
+
+		e = tanhOutputActivation.CalculateError(targets);
 
 		if (i++ % 10000 == 0)
 		{
-			e = tanhHidden1Activation.CalculateError(targets);
 			std::cout << e << std::endl;
 		}
-	} while (true);
+	} while (e > 0.001);
+
+	std::cout << "Error: " << e << std::endl;
+	std::cout << "Epoch: " << i << std::endl;
+	std::cout << tanhOutputActivation.Y << std::endl;
 
 }
 
