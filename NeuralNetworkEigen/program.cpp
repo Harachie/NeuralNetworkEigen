@@ -1,5 +1,6 @@
 #include <iostream>
 #include <Eigen\Dense>
+#include <random>
 
 using Eigen::MatrixXd;
 
@@ -320,10 +321,10 @@ void Gates()
 
 void Layer()
 {
-	int samples = 4;
-	int features = 2;
-	int inputNeurons = 3;
-	int hidden1Neurons = 2;
+	int samples = 40000;
+	int features = 13;
+	int inputNeurons = 7;
+	int hidden1Neurons = 5;
 	int outputNeurons = 2;
 	double e;
 	double learningRate = 0.01;
@@ -336,7 +337,7 @@ void Layer()
 	LinearBiasLayer outputLayer(samples, hidden1Neurons, outputNeurons);
 	TanhLayer tanhOutputActivation;
 
-	MatrixXd targets(samples, hidden1Neurons);
+	MatrixXd targets(samples, outputNeurons);
 	MatrixXd topGradients;
 
 	for (size_t i = 0; i < samples; i++)
@@ -345,7 +346,7 @@ void Layer()
 		targets(i, 1) = 1.0;
 	}
 
-	
+
 	do
 	{
 		input.Forward();
@@ -377,16 +378,151 @@ void Layer()
 		{
 			std::cout << e << std::endl;
 		}
-	} while (e > 0.001);
+	} while (1); //e > 0.00001
 
 	std::cout << "Error: " << e << std::endl;
 	std::cout << "Epoch: " << i << std::endl;
-	std::cout << tanhOutputActivation.Y << std::endl;
+	//std::cout << tanhOutputActivation.Y << std::endl;
 
+}
+
+double *InterestRatesConstant(int years, double interest)
+{
+	double *r = new double[years];
+
+	for (size_t i = 0; i < years; i++)
+	{
+		r[i] = interest;
+	}
+
+	return r;
+}
+
+void InterestRatesRandom(double *r, int years, double interest, std::uniform_real_distribution<double> &dist, std::default_random_engine &re)
+{
+	double multiplied = 1.0;
+	double expected = pow(interest, years);
+	double factor;
+	double itemFactor;
+
+	for (size_t i = 0; i < years; i++)
+	{
+		r[i] = dist(re);
+		multiplied *= r[i];
+	}
+
+	factor = expected / multiplied;
+	itemFactor = pow(factor, 1.0 / years);
+
+	for (size_t i = 0; i < years; i++)
+	{
+		r[i] *= itemFactor;
+	}
+}
+
+double Savings(double startCapital, double yearlyInvest, int years, double *interestRates)
+{
+	double money;
+
+	money = startCapital;
+
+	for (size_t i = 0; i < years; i++)
+	{
+		money += yearlyInvest;
+		money *= interestRates[i];
+	}
+
+	return money;
+}
+
+double Savings(double startCapital, double yearlyInvest, int years, double interest)
+{
+	double money;
+
+	money = startCapital;
+
+	for (size_t i = 0; i < years; i++)
+	{
+		money += yearlyInvest;
+		money *= interest;
+	}
+
+	return money;
+}
+
+double Invest(double startCapital, double yearlyInvest, int years)
+{
+	double money;
+
+	money = startCapital;
+
+	for (size_t i = 0; i < years; i++)
+	{
+		money += yearlyInvest;
+	}
+
+	return money;
+}
+
+void Savings()
+{
+	int years = 30;
+	int epochs = 50000;
+	int higher = 0;
+	int lower = 0;
+	int lowerThanInvested = 0;
+	double interestRate = 1.07;
+	double monthlyInvestment = 1200;
+	double yearlyInvestment = 12 * monthlyInvestment;
+	double money;
+	double base;
+	double invested;
+	double *interestRates = new double[years];
+	double min = std::numeric_limits<double>::max();
+	double max = std::numeric_limits<double>::min();
+	std::default_random_engine re;
+
+	base = Savings(50000, yearlyInvestment, 30, InterestRatesConstant(30, 1.07));
+	invested = Invest(50000, yearlyInvestment, 30);
+
+	for (double minRate = 0.01; minRate < 1.0; minRate += 0.01)
+	{
+		min = std::numeric_limits<double>::max();
+		max = std::numeric_limits<double>::min();
+
+		higher = 0;
+		lower = 0;
+		std::uniform_real_distribution<double> dist(minRate, 1.0);
+
+
+		for (size_t i = 0; i < epochs; i++)
+		{
+			InterestRatesRandom(interestRates, 30, 1.07, dist, re);
+			money = Savings(50000, yearlyInvestment, 30, interestRates);
+
+			higher += (money > base);
+			lower += (money < base);
+			lowerThanInvested += (money < invested);
+
+			if (money > max)
+			{
+				max = money;
+			}
+
+			if (money < min)
+			{
+				min = money;
+			}
+		}
+
+		std::cout << std::fixed << minRate << ": " << min << " - " << max << " | " << lower << " - " << higher << std::endl;
+	}
+	
 }
 
 int main()
 {
+	Savings();
 	Layer();
 
 	return 0;
