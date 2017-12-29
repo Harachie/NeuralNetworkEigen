@@ -420,6 +420,29 @@ void InterestRatesRandom(double *r, int years, double interest, std::uniform_rea
 	}
 }
 
+double Savings(double startCapital, double yearlyInvest, int years, double *interestRates, double dividendRate)
+{
+	double money;
+	double dividends;
+	double dividendsAfterTax;
+	double tax = 0.0;
+
+	money = startCapital;
+
+	for (size_t i = 0; i < years; i++)
+	{
+		money += yearlyInvest;
+		dividends = money * dividendRate;
+		dividendsAfterTax = dividends * 0.7375;
+		money -= dividends;
+		money += dividendsAfterTax;
+		tax += dividends - dividendsAfterTax;
+		money *= interestRates[i];
+	}
+
+	return money;
+}
+
 double Savings(double startCapital, double yearlyInvest, int years, double *interestRates)
 {
 	double money;
@@ -468,56 +491,61 @@ void Savings()
 {
 	int years = 30;
 	int epochs = 50000;
-	int higher = 0;
-	int lower = 0;
+	int higherThanBase = 0;
+	int lowerThanBase = 0;
 	int lowerThanInvested = 0;
 	double interestRate = 1.07;
+	double startCapital = 0.0;
 	double monthlyInvestment = 1200;
 	double yearlyInvestment = 12 * monthlyInvestment;
+	double mean;
 	double money;
 	double base;
 	double invested;
 	double *interestRates = new double[years];
-	double min = std::numeric_limits<double>::max();
-	double max = std::numeric_limits<double>::min();
+	double minimumMoney = std::numeric_limits<double>::max();
+	double maximumMoney = std::numeric_limits<double>::min();
 	std::default_random_engine re;
 
-	base = Savings(50000, yearlyInvestment, 30, InterestRatesConstant(30, 1.07));
-	invested = Invest(50000, yearlyInvestment, 30);
+	base = Savings(startCapital, yearlyInvestment, years, InterestRatesConstant(years, interestRate), 0.015);
+	invested = Invest(startCapital, yearlyInvestment, years);
 
-	for (double minRate = 0.01; minRate < 1.0; minRate += 0.01)
+	for (double minRate = 0.00; minRate < 1.0; minRate += 0.01)
 	{
-		min = std::numeric_limits<double>::max();
-		max = std::numeric_limits<double>::min();
+		minimumMoney = std::numeric_limits<double>::max();
+		maximumMoney = std::numeric_limits<double>::min();
 
-		higher = 0;
-		lower = 0;
-		std::uniform_real_distribution<double> dist(minRate, 1.0);
+		higherThanBase = 0;
+		lowerThanBase = 0;
+		lowerThanInvested = 0;
+		mean = 0.0;
+		std::uniform_real_distribution<double> dist(interestRate - minRate, interestRate + minRate);
 
 
 		for (size_t i = 0; i < epochs; i++)
 		{
-			InterestRatesRandom(interestRates, 30, 1.07, dist, re);
-			money = Savings(50000, yearlyInvestment, 30, interestRates);
+			InterestRatesRandom(interestRates, years, interestRate, dist, re);
+			money = Savings(startCapital, yearlyInvestment, years, interestRates, 0.015);
 
-			higher += (money > base);
-			lower += (money < base);
+			higherThanBase += (money > base);
+			lowerThanBase += (money < base);
 			lowerThanInvested += (money < invested);
+			mean += money;
 
-			if (money > max)
+			if (money > maximumMoney)
 			{
-				max = money;
+				maximumMoney = money;
 			}
 
-			if (money < min)
+			if (money < minimumMoney)
 			{
-				min = money;
+				minimumMoney = money;
 			}
 		}
 
-		std::cout << std::fixed << minRate << ": " << min << " - " << max << " | " << lower << " - " << higher << std::endl;
+		printf("%f: %.0f - %.0f - %.0f | %i - %i | %i\n", minRate, minimumMoney, (mean / (double)epochs), maximumMoney, lowerThanBase, higherThanBase, lowerThanInvested);
 	}
-	
+
 }
 
 int main()
