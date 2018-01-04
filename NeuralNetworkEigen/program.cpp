@@ -1,22 +1,13 @@
 #include <iostream>
 #include <Eigen\Dense>
 #include <random>
+#include "NeuralNetwork.h"
+#include "DifferentialEvolution.h"
+#include "Structures.h"
+#include <vector>
 
 using Eigen::MatrixXd;
-
-double customTanh(double x)
-{
-	return std::tanh(x);
-}
-
-double tanhDerivative(double x)
-{
-	double s;
-
-	s = std::tanh(x);
-
-	return 1.0 - s * s;
-}
+using namespace std;
 
 struct AddGate
 {
@@ -103,196 +94,7 @@ struct MultiplyGate
 
 };
 
-struct TanhLayer
-{
-	MatrixXd Y;
-	MatrixXd dYwrtX;
 
-	void Forward(MatrixXd &X)
-	{
-		Y = X.unaryExpr(&customTanh);
-	}
-
-	void Backward(MatrixXd &topGradients)
-	{
-		dYwrtX = topGradients.cwiseProduct(Y.unaryExpr(&tanhDerivative));
-	}
-
-	double CalculateError(MatrixXd &targets)
-	{
-		return (Y - targets).cwiseProduct(Y - targets).sum() * 0.5;
-	}
-
-};
-
-struct LinearInputLayer
-{
-	int Samples;
-	int Features;
-	int Outputs;
-
-	MatrixXd X;
-	MatrixXd W;
-	MatrixXd Y;
-	MatrixXd dYwrtW;
-
-	LinearInputLayer(int samples, int features, int outputs)
-	{
-		Samples = samples;
-		Features = features;
-		Outputs = outputs;
-
-		X = MatrixXd(samples, features);
-		W = MatrixXd(features, outputs);
-
-		X.setRandom();
-		W.setRandom();
-	}
-
-	void Forward()
-	{
-		Y = X * W;
-	}
-
-	void Backward(MatrixXd &topGradients)
-	{
-		dYwrtW = X.transpose() * topGradients;
-	}
-
-	void Update(double learningRate)
-	{
-		W = W - dYwrtW * learningRate;
-	}
-
-
-};
-
-struct LinearInputBiasLayer
-{
-	int Samples;
-	int Features;
-	int Outputs;
-
-	MatrixXd X;
-	MatrixXd W;
-	MatrixXd Y;
-	MatrixXd dYwrtW;
-
-	LinearInputBiasLayer(int samples, int features, int outputs)
-	{
-		Samples = samples;
-		Features = features;
-		Outputs = outputs;
-
-		X = MatrixXd(samples, features + 1);
-		W = MatrixXd(features + 1, outputs);
-
-		X.setRandom();
-		W.setRandom();
-	}
-
-	void Forward()
-	{
-		Y = X * W;
-	}
-
-	void Backward(MatrixXd &topGradients)
-	{
-		dYwrtW = X.transpose() * topGradients;
-	}
-
-	void Update(double stepSize) //input layer can only update their W
-	{
-		W = W - dYwrtW * stepSize;
-	}
-
-
-};
-
-struct LinearLayer
-{
-	int Samples;
-	int Features;
-	int Outputs;
-
-	MatrixXd InternalX;
-	MatrixXd W;
-	MatrixXd Y;
-	MatrixXd dYwrtX;
-	MatrixXd dYwrtW;
-
-	LinearLayer(int samples, int features, int outputs)
-	{
-		Samples = samples;
-		Features = features;
-		Outputs = outputs;
-
-		W = MatrixXd(features, outputs);
-		W.setRandom();
-	}
-
-	void Forward(MatrixXd &X)
-	{
-		InternalX = X;
-		Y = X * W;
-	}
-
-	void Backward(MatrixXd &topGradients)
-	{
-		dYwrtX = topGradients * W.transpose(); //die gehen an den unteren layer weiter
-		dYwrtW = InternalX.transpose() * topGradients;
-	}
-
-	void Update(double stepSize)
-	{
-		W = W - dYwrtW * stepSize;
-	}
-
-
-};
-
-struct LinearBiasLayer
-{
-	int Samples;
-	int Features;
-	int Outputs;
-
-	MatrixXd InternalX;
-	MatrixXd W;
-	MatrixXd Y;
-	MatrixXd dYwrtX;
-	MatrixXd dYwrtW;
-
-	LinearBiasLayer(int samples, int features, int outputs)
-	{
-		Samples = samples;
-		Features = features;
-		Outputs = outputs;
-
-		InternalX = MatrixXd(samples, features + 1);
-		W = MatrixXd(features + 1, outputs);
-		W.setRandom();
-	}
-
-	void Forward(MatrixXd &X)
-	{
-		InternalX << X, MatrixXd(X.rows(), 1).setOnes();
-		Y = InternalX * W;
-	}
-
-	void Backward(MatrixXd &topGradients)
-	{
-		dYwrtX = topGradients * W.transpose().leftCols(Features); //die gehen an den unteren layer weiter
-		dYwrtW = InternalX.transpose() * topGradients;
-	}
-
-	void Update(double stepSize)
-	{
-		W = W - dYwrtW * stepSize;
-	}
-
-
-};
 
 
 void Gates()
@@ -630,8 +432,203 @@ int InvestUntilSelfSupportedQuarterlyDividendsAsStockPricePart(
 	return i;
 }
 
+vector<StockData> ReadStockData()
+{
+	FILE *stream;
+	vector<StockData> r;
+	StockData sd;
+
+	if (fopen_s(&stream, "C:\\Coding\\snp.txt", "r") == 0) {
+		while (fscanf_s(stream, "%zu,%lf,%lf,%lf,%lf,%zu", &sd.Date, &sd.Open, &sd.High, &sd.Low, &sd.Close, &sd.Volume) == 5) {
+			sd.Volume = 0;
+			r.push_back(sd);
+		}
+
+		while (fscanf_s(stream, "%zu,%lf,%lf,%lf,%lf,%zu", &sd.Date, &sd.Open, &sd.High, &sd.Low, &sd.Close, &sd.Volume) == 6) {
+			r.push_back(sd);
+		}
+
+		fclose(stream);
+	}
+
+	delete stream;
+
+	return r;
+}
+
+
+vector<StockData> FilterMinimumDate(vector<StockData> &data, size_t minimumDate)
+{
+	vector<StockData> r;
+
+	for (size_t i = 0; i < data.size(); i++)
+	{
+		if (data[i].Date >= minimumDate)
+		{
+			r.push_back(data[i]);
+		}
+	}
+
+	return r;
+}
+
+void StockStuff()
+{
+	vector<StockData> data;
+	vector<StockData> sinceDate;
+
+	data = ReadStockData();
+	sinceDate = FilterMinimumDate(data, 20000000);
+
+	//n tage vorher rausfischen, ergebnis ist 0 oder 1, bei 1 kaufen, bei 0 weiterlaufen lassen
+	//die summe der investitionen soll möglichst klein sein
+	//wenn nicht gekauft wird, wird beim nächsten kauf die anzahl der nichtkäufe dazugenommen
+	//2 tage nicht kaufen, 3. tag kaufen => 3 mal zu diesem tagespreis kaufen
+
+	//train => besser geworden upward pull auf alle?!
+	//schlechter geworden negative pull auf die einser
+	//egal erstmal differential stuff
+}
+
+const int POPULATION = 40;
+
+void Challenger()
+{
+	int samples = 20; //immer dran denken, es kann auch sein, dass nicht gefittet werden kann! (nahe 0 vll unmöglich) das netzwerk ist vll garnicht in der lage
+	int features = 5;
+	int outputs = 2;
+
+	LinearInputBiasLayer input(samples, features, outputs);
+	TanhLayer activation;
+	MatrixXd targets(samples, outputs);
+
+	MatrixXd weights[POPULATION];
+	MatrixXd challenger(features + 1, outputs);
+	MatrixXd mutator(features + 1, outputs);
+	MatrixXd alpha;
+	MatrixXd omega;
+	double f = 0.5;
+	double e, eMutator, eMin;
+	int alphaIndex, omegaIndex, epoch;
+
+	eMin = std::numeric_limits<double>::max();
+	std::default_random_engine re;
+	std::uniform_int_distribution<int> dist(0, POPULATION - 1);
+	epoch = 0;
+
+	for (size_t i = 0; i < samples; i++)
+	{
+		targets(i, 0) = -1.0;
+		targets(i, 1) = 1.0;
+	}
+
+	for (size_t i = 0; i < POPULATION; i++)
+	{
+		weights[i] = MatrixXd::Random(features + 1, outputs);
+	}
+
+	do
+	{
+		for (size_t i = 0; i < POPULATION; i++)
+		{
+			input.W = weights[i];
+			input.Forward();
+			activation.Forward(input.Y);
+			e = activation.CalculateError(targets);
+
+			do
+			{
+				alphaIndex = dist(re);
+				omegaIndex = dist(re);
+			} while (alphaIndex == i || omegaIndex == i || omegaIndex == alphaIndex);
+
+			CalculateChallenger(challenger, weights[i], weights[alphaIndex], weights[omegaIndex], f);
+			CalculateMutator(mutator, challenger, weights[i]);
+
+			input.W = mutator; //reicht challenger vll schon aus? => nö ist doof
+			input.Forward();
+			activation.Forward(input.Y);
+			eMutator = activation.CalculateError(targets);
+
+			if (eMutator < e)
+			{
+				weights[i] = mutator;
+
+				if (eMutator < eMin)
+				{
+					eMin = eMutator;
+				}
+			}
+		}
+
+		epoch++;
+
+		if (epoch % 10 == 0)
+		{
+			printf("%i: %f\n", epoch, eMin);
+
+		}
+	} while (true);
+}
+
+
+void ChallengerNN()
+{
+	int samples = 20;
+	int features = 5;
+	int outputs = 2;
+
+	LinearInputBiasLayer input(samples, features, outputs);
+	TanhLayer activation;
+	MatrixXd topGradients;
+	MatrixXd targets(samples, outputs);
+	double e,  eMin;
+	int epoch;
+
+	eMin = std::numeric_limits<double>::max();
+	epoch = 0;
+
+	for (size_t i = 0; i < samples; i++)
+	{
+		targets(i, 0) = -1.0;
+		targets(i, 1) = 1.0;
+	}
+
+	do
+	{
+		input.Forward();
+		activation.Forward(input.Y);
+		e = activation.CalculateError(targets);
+
+
+		topGradients = activation.Y - targets;
+
+		activation.Backward(topGradients);
+		input.Backward(activation.dYwrtX);
+		input.Update(0.0001);
+
+		if (e < eMin)
+		{
+			eMin = e;
+		}
+
+		epoch++;
+
+		if (epoch % 1 == 0)
+		{
+			printf("%i: %f\n", epoch, eMin);
+
+		}
+	} while (true);
+}
+
 int main()
 {
+
+	Challenger();
+
+
+	StockStuff();
 	int selfSupported1 = InvestUntilSelfSupportedQuarterly(1200, 50, 1.0, 1.06, 1.03);
 	int selfSupported2 = InvestUntilSelfSupportedQuarterlyDividendsAsStockPricePart(1000, 50, 1.0, 1.04, 0.04);
 	Savings();
