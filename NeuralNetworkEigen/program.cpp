@@ -456,7 +456,6 @@ vector<StockData> ReadStockData()
 	return r;
 }
 
-
 vector<StockData> FilterMinimumDate(vector<StockData> &data, size_t minimumDate)
 {
 	vector<StockData> r;
@@ -472,13 +471,159 @@ vector<StockData> FilterMinimumDate(vector<StockData> &data, size_t minimumDate)
 	return r;
 }
 
+double BuyBars(vector<StockData> &data, int *indices, int startIndex)
+{
+	double r = 0.0;
+	double stocksHold = 0.0;
+	double counter = 1.0;
+
+	for (size_t i = startIndex; i < data.size(); i++)
+	{
+		if (indices[i])
+		{
+			r += data[i].Open * counter;
+			stocksHold += counter;
+			counter = 1.0;
+		}
+		else
+		{
+			counter += 1.0;
+		}
+	}
+
+	if (counter > 1.0)
+	{
+		counter -= 1.0;
+		r += data[data.size() - 1].Open * counter;
+		stocksHold += counter;
+	}
+
+	return r;
+}
+
+const int POPULATION = 40;
+
 void StockStuff()
 {
+	int samples;
+	int features = 10;
+	int outputs = 1;
 	vector<StockData> data;
 	vector<StockData> sinceDate;
+	std::default_random_engine re;
+	std::uniform_int_distribution<int> zeroOrOneDistribution(0, 1);
+	std::uniform_int_distribution<int> populationDistribution(0, POPULATION - 1);
+	int *p;
+	double allBars, specifiedBars, base;
+	MatrixXd X;
 
 	data = ReadStockData();
 	sinceDate = FilterMinimumDate(data, 20000000);
+	samples = sinceDate.size() - features - 1;
+	p = new int[samples];
+	X = MatrixXd::Ones(samples, features + 1); //bias ist das plus 1
+
+
+	for (size_t i = features + 1; i < sinceDate.size(); i++)
+	{
+		base = sinceDate[i - 1].Open; //das soll ja für den nächsten tag also i gelten
+
+		for (size_t n = 0; n < features; n++)
+		{
+			X(i - features - 1, n) = (base / sinceDate[i - features + n - 1].Open) - 1.0;
+		}
+	}
+
+	//cout << X << std::endl;
+	for (size_t i = 0; i < samples; i++)
+	{
+		p[i] = 1;
+	}
+
+	allBars = BuyBars(sinceDate, p, features + 1);
+
+
+	LinearInputBiasLayer input(samples, features, outputs);
+	TanhLayer activation;
+	Eigen::MatrixXi is;
+	MatrixXd weights[POPULATION];
+	MatrixXd challenger(features + 1, outputs);
+	MatrixXd mutator(features + 1, outputs);
+	MatrixXd alpha;
+	MatrixXd omega;
+	double f = 0.5;
+	double e, eMutator, eMin;
+	int alphaIndex, omegaIndex, epoch;
+	eMin = std::numeric_limits<double>::max();
+	epoch = 0;
+
+
+	//hier gehts los
+	input.X = X;
+
+	for (size_t i = 0; i < POPULATION; i++)
+	{
+		weights[i] = MatrixXd::Random(features + 1, outputs);
+	}
+
+	do
+	{
+		for (size_t i = 0; i < POPULATION; i++)
+		{
+			input.W = weights[i];
+			input.Forward();
+			activation.Forward(input.Y);
+
+			is = activation.Y.unaryExpr(&zeroOrOne).cast<int>();
+
+			//cout << activation.Y << std::endl << std::endl;
+		//	cout << is << std::endl << std::endl;
+
+			p = is.data();
+			e = BuyBars(sinceDate, p, features + 1);
+
+			do
+			{
+				alphaIndex = populationDistribution(re);
+				omegaIndex = populationDistribution(re);
+			} while (alphaIndex == i || omegaIndex == i || omegaIndex == alphaIndex); //do I care? => yes much faster
+
+			CalculateChallenger(challenger, weights[i], weights[alphaIndex], weights[omegaIndex], f);
+			CalculateMutator(mutator, challenger, weights[i]);
+
+			input.W = mutator; //reicht challenger vll schon aus? => nö ist doof
+			input.Forward();
+			activation.Forward(input.Y);
+
+			p = ((Eigen::MatrixXi)activation.Y.unaryExpr(&zeroOrOne).cast<int>()).data();
+			eMutator = BuyBars(sinceDate, p, features + 1);
+			//hier kann ich die fitness methode einbauen fitness(activation.Y)
+
+			if (eMutator < e)
+			{
+				weights[i] = mutator;
+
+				if (eMutator < eMin)
+				{
+					eMin = eMutator;
+					printf("%i: %f -> %f\n", epoch, allBars, eMin);
+				}
+			}
+		}
+
+		epoch++;
+
+		/*if (epoch % 10 == 0)
+		{
+			printf("%i: %f\n", epoch, eMin);
+
+		}*/
+	} while (true);
+	/*
+		for (size_t i = 0; i < samples; i++)
+		{
+			p[i] = zeroOrOneDistribution(re);
+		}*/
 
 	//n tage vorher rausfischen, ergebnis ist 0 oder 1, bei 1 kaufen, bei 0 weiterlaufen lassen
 	//die summe der investitionen soll möglichst klein sein
@@ -490,7 +635,6 @@ void StockStuff()
 	//egal erstmal differential stuff
 }
 
-const int POPULATION = 40;
 
 void Challenger()
 {
@@ -540,7 +684,7 @@ void Challenger()
 			{
 				alphaIndex = dist(re);
 				omegaIndex = dist(re);
-			} while (alphaIndex == i || omegaIndex == i || omegaIndex == alphaIndex);
+			} while (alphaIndex == i || omegaIndex == i || omegaIndex == alphaIndex); //do I care? => yes much faster
 
 			CalculateChallenger(challenger, weights[i], weights[alphaIndex], weights[omegaIndex], f);
 			CalculateMutator(mutator, challenger, weights[i]);
@@ -549,6 +693,7 @@ void Challenger()
 			input.Forward();
 			activation.Forward(input.Y);
 			eMutator = activation.CalculateError(targets);
+			//hier kann ich die fitness methode einbauen fitness(activation.Y)
 
 			if (eMutator < e)
 			{
@@ -582,7 +727,7 @@ void ChallengerNN()
 	TanhLayer activation;
 	MatrixXd topGradients;
 	MatrixXd targets(samples, outputs);
-	double e,  eMin;
+	double e, eMin;
 	int epoch;
 
 	eMin = std::numeric_limits<double>::max();
@@ -625,7 +770,7 @@ void ChallengerNN()
 int main()
 {
 
-	Challenger();
+	//Challenger();
 
 
 	StockStuff();
