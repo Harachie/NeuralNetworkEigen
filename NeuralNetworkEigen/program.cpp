@@ -548,8 +548,92 @@ void Savings()
 
 }
 
+int InvestUntilSelfSupportedQuarterly(double perMonth, double startCommodityCost, double startDividends, double interestRate, double dividendRate)
+{
+	int i = 0;
+	double dividends;
+	double dividendsAfterTax = 0.0;
+	double invested = 0.0;
+	double stocksHold = 0.0;
+	double dividendsPerStock = startDividends;
+	double costsPerStock = startCommodityCost;
+
+	do
+	{
+		i++;
+		invested += perMonth;
+		stocksHold += (perMonth / costsPerStock);
+
+		if (i % 4 == 0)
+		{
+			dividends = stocksHold * dividendsPerStock * 0.25;
+			costsPerStock -= (dividendsPerStock * 0.25); //das kost ja nun weniger, weil die dividenden abgezogen werden
+			dividendsAfterTax = dividends * 0.7375;
+
+			invested += dividendsAfterTax;
+			stocksHold += (dividendsAfterTax / costsPerStock);
+		}
+
+		if (i % 12 == 0) //könnte auch auf pro monat runterbrechen... so ist es etwas positiver ;)
+		{
+			dividendsPerStock *= dividendRate;
+			costsPerStock *= interestRate;
+		}
+	} while (dividendsAfterTax / 4 < perMonth);
+
+	return i;
+}
+
+int InvestUntilSelfSupportedQuarterlyDividendsAsStockPricePart(
+	double perMonth, double startCommodityCost, double startDividends,
+	double interestRate, double dividendRate)
+{
+	int i = 0;
+	double dividends;
+	double dividendsAfterTax = 0.0;
+	double invested = 0.0;
+	double stocksHold = 0;
+	double costsPerStock = startCommodityCost;
+	double dividendsPerStock;
+
+	do
+	{
+		i++;
+		invested += perMonth;
+		stocksHold += (perMonth / costsPerStock);
+
+		if (i % 4 == 0)
+		{
+			dividendsPerStock = costsPerStock * dividendRate * 0.25;
+			dividends = stocksHold * dividendsPerStock;
+			costsPerStock -= dividendsPerStock; //das kost ja nun weniger, weil die dividenden abgezogen werden
+
+			if (dividends > 200.0)
+			{
+				dividendsAfterTax = 200.0 + (dividends - 200.0) * 0.7375;
+			}
+			else
+			{
+				dividendsAfterTax = dividends; //keine steuer
+			}
+
+			invested += dividendsAfterTax;
+			stocksHold += (dividendsAfterTax / costsPerStock);
+		}
+
+		if (i % 12 == 0) //könnte auch auf pro monat runterbrechen... so ist es etwas positiver ;)
+		{
+			costsPerStock *= interestRate;
+		}
+	} while (dividendsAfterTax / 4 < perMonth);
+
+	return i;
+}
+
 int main()
 {
+	int selfSupported1 = InvestUntilSelfSupportedQuarterly(1200, 50, 1.0, 1.06, 1.03);
+	int selfSupported2 = InvestUntilSelfSupportedQuarterlyDividendsAsStockPricePart(1000, 50, 1.0, 1.04, 0.04);
 	Savings();
 	Layer();
 
