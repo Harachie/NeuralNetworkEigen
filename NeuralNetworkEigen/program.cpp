@@ -501,13 +501,18 @@ double BuyBars(vector<StockData> &data, int *indices, int startIndex)
 	return r;
 }
 
-const int POPULATION = 40;
+const int POPULATION = 42;
 
 void StockStuff()
 {
+	//20 features, 10 inputs, beide tanh => 5350982 bei epoch 12948
+	//30 features, 5 inputs, beide relu => 5380929 bei epoch 13305
+	//30 features, 5 inputs, beide tanh => 5323048 bei epoch 3247
 	int samples;
-	int features = 20;
+	int features = 30;
+	int inputNeurons = 5;
 	int outputs = 1;
+
 	size_t sampleIndex;
 	vector<StockData> data;
 	vector<StockData> sinceDate;
@@ -515,7 +520,7 @@ void StockStuff()
 	std::uniform_int_distribution<int> zeroOrOneDistribution(0, 1);
 	std::uniform_int_distribution<int> populationDistribution(0, POPULATION - 1);
 	int *p;
-	double allBars, specifiedBars, base;
+	double allBars, base, stocksHold, allBarsRise, changedRise;
 	MatrixXd X;
 
 	//idee: man kann doch auch das optimum suchen lassen, mhhh aber dann ohne regel
@@ -547,16 +552,28 @@ void StockStuff()
 	}
 
 	allBars = BuyBars(sinceDate, p, features + 1);
+	stocksHold = (double)samples;
+	allBarsRise = stocksHold * sinceDate[sinceDate.size() - 1].Open / allBars;
 
 
-	LinearInputBiasLayer input(samples, features, outputs);
+	LinearInputBiasLayer input(samples, features, inputNeurons);
+	TanhLayer inputActivation;
+	LinearBiasLayer hidden(samples, inputNeurons, outputs);
 	TanhLayer activation;
+
+
+
+	MatrixXd inputWeights[POPULATION];
+	MatrixXd hiddenWeights[POPULATION];
+
+	MatrixXd inputChallenger(features + 1, inputNeurons);
+	MatrixXd inputMutator(features + 1, inputNeurons);
+
+	MatrixXd hiddenChallenger(inputNeurons + 1, outputs);
+	MatrixXd hiddenMutator(inputNeurons + 1, outputs);
+
+
 	Eigen::MatrixXi is;
-	MatrixXd weights[POPULATION];
-	MatrixXd challenger(features + 1, outputs);
-	MatrixXd mutator(features + 1, outputs);
-	MatrixXd alpha;
-	MatrixXd omega;
 	double f = 0.5;
 	double eMutator, eMin;
 	double errors[POPULATION];
@@ -570,10 +587,16 @@ void StockStuff()
 
 	for (size_t i = 0; i < POPULATION; i++)
 	{
-		weights[i] = MatrixXd::Random(features + 1, outputs);
-		input.W = weights[i];
+		inputWeights[i] = MatrixXd::Random(features + 1, inputNeurons);
+		hiddenWeights[i] = MatrixXd::Random(inputNeurons + 1, outputs);
+
+		input.W = inputWeights[i];
 		input.Forward();
-		activation.Forward(input.Y);
+		inputActivation.Forward(input.Y);
+
+		hidden.W = hiddenWeights[i];
+		hidden.Forward(inputActivation.Y);
+		activation.Forward(hidden.Y);
 
 		is = activation.Y.unaryExpr(&zeroOrOne).cast<int>();
 		p = is.data();
@@ -590,12 +613,21 @@ void StockStuff()
 				omegaIndex = populationDistribution(re);
 			} while (alphaIndex == i || omegaIndex == i || omegaIndex == alphaIndex); //do I care? => yes much faster
 
-			CalculateChallenger(challenger, weights[i], weights[alphaIndex], weights[omegaIndex], f);
-			CalculateMutator(mutator, challenger, weights[i]);
+			CalculateChallenger(inputChallenger, inputWeights[i], inputWeights[alphaIndex], inputWeights[omegaIndex], f);
+			CalculateMutator(inputMutator, inputChallenger, inputWeights[i]);
 
-			input.W = mutator; //reicht challenger vll schon aus? => nö ist doof
+
+			CalculateChallenger(hiddenChallenger, hiddenWeights[i], hiddenWeights[alphaIndex], hiddenWeights[omegaIndex], f);
+			CalculateMutator(hiddenMutator, hiddenChallenger, hiddenWeights[i]);
+
+
+			input.W = inputMutator; //reicht challenger vll schon aus? => nö ist doof
 			input.Forward();
-			activation.Forward(input.Y);
+			inputActivation.Forward(input.Y);
+
+			hidden.W = hiddenMutator;
+			hidden.Forward(inputActivation.Y);
+			activation.Forward(hidden.Y);
 
 			is = activation.Y.unaryExpr(&zeroOrOne).cast<int>();
 			p = is.data();
@@ -603,24 +635,22 @@ void StockStuff()
 
 			if (eMutator < errors[i])
 			{
-				weights[i] = mutator;
+				inputWeights[i] = inputMutator;
+				hiddenWeights[i] = hiddenMutator;
 				errors[i] = eMutator;
 
 				if (eMutator < eMin)
 				{
 					eMin = eMutator;
-					printf("%i: %f -> %f\n", epoch, allBars, eMin);
+
+					changedRise = (stocksHold * sinceDate[sinceDate.size() - 1].Open / eMin) - allBarsRise;
+					printf("%i: %.0f -> %.0f     %.5f\n", epoch, allBars, eMin, changedRise);
 				}
 			}
 		}
 
 		epoch++;
 
-		/*if (epoch % 10 == 0)
-		{
-			printf("%i: %f\n", epoch, eMin);
-
-		}*/
 	} while (true);
 
 	//n tage vorher rausfischen, ergebnis ist 0 oder 1, bei 1 kaufen, bei 0 weiterlaufen lassen
