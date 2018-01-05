@@ -506,8 +506,9 @@ const int POPULATION = 40;
 void StockStuff()
 {
 	int samples;
-	int features = 10;
+	int features = 20;
 	int outputs = 1;
+	size_t sampleIndex;
 	vector<StockData> data;
 	vector<StockData> sinceDate;
 	std::default_random_engine re;
@@ -516,6 +517,8 @@ void StockStuff()
 	int *p;
 	double allBars, specifiedBars, base;
 	MatrixXd X;
+
+	//idee: man kann doch auch das optimum suchen lassen, mhhh aber dann ohne regel
 
 	data = ReadStockData();
 	sinceDate = FilterMinimumDate(data, 20000000);
@@ -527,12 +530,15 @@ void StockStuff()
 	for (size_t i = features + 1; i < sinceDate.size(); i++)
 	{
 		base = sinceDate[i - 1].Open; //das soll ja für den nächsten tag also i gelten
+		sampleIndex = i - features - 1;
 
 		for (size_t n = 0; n < features; n++)
 		{
-			X(i - features - 1, n) = (base / sinceDate[i - features + n - 1].Open) - 1.0;
+			X(sampleIndex, n) = (base / sinceDate[sampleIndex + n].Open) - 1.0;
 		}
 	}
+
+	//average mit std von den errors berechenen, wenn std sehr klein dann pulsen
 
 	//cout << X << std::endl;
 	for (size_t i = 0; i < samples; i++)
