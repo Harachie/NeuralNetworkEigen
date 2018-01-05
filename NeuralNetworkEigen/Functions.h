@@ -11,6 +11,11 @@ inline double zeroOrOne(double x)
 	return x > 0;
 }
 
+inline double customRelu(double x)
+{
+	return (x > 0) * x;
+}
+
 inline double customTanh(double x)
 {
 	return tanh(x);

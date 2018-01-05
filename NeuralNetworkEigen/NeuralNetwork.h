@@ -26,6 +26,28 @@ struct TanhLayer
 
 };
 
+struct ReluLayer
+{
+	MatrixXd Y;
+	//MatrixXd dYwrtX;
+
+	void Forward(MatrixXd &X)
+	{
+		Y = X.unaryExpr(&customRelu);
+	}
+
+	/*void Backward(MatrixXd &topGradients)
+	{
+		dYwrtX = topGradients.cwiseProduct(Y.unaryExpr(&tanhDerivative));
+	}
+
+	double CalculateError(MatrixXd &targets)
+	{
+		return (Y - targets).cwiseProduct(Y - targets).sum() * 0.5;
+	}*/
+
+};
+
 struct LinearInputLayer
 {
 	int Samples;
@@ -106,7 +128,6 @@ struct LinearInputBiasLayer
 	{
 		W = W - dYwrtW * stepSize;
 	}
-
 
 };
 

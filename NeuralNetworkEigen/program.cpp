@@ -558,7 +558,8 @@ void StockStuff()
 	MatrixXd alpha;
 	MatrixXd omega;
 	double f = 0.5;
-	double e, eMutator, eMin;
+	double eMutator, eMin;
+	double errors[POPULATION];
 	int alphaIndex, omegaIndex, epoch;
 	eMin = std::numeric_limits<double>::max();
 	epoch = 0;
@@ -570,24 +571,19 @@ void StockStuff()
 	for (size_t i = 0; i < POPULATION; i++)
 	{
 		weights[i] = MatrixXd::Random(features + 1, outputs);
+		input.W = weights[i];
+		input.Forward();
+		activation.Forward(input.Y);
+
+		is = activation.Y.unaryExpr(&zeroOrOne).cast<int>();
+		p = is.data();
+		errors[i] = BuyBars(sinceDate, p, features + 1);
 	}
 
 	do
 	{
 		for (size_t i = 0; i < POPULATION; i++)
 		{
-			input.W = weights[i];
-			input.Forward();
-			activation.Forward(input.Y);
-
-			is = activation.Y.unaryExpr(&zeroOrOne).cast<int>();
-
-			//cout << activation.Y << std::endl << std::endl;
-		//	cout << is << std::endl << std::endl;
-
-			p = is.data();
-			e = BuyBars(sinceDate, p, features + 1);
-
 			do
 			{
 				alphaIndex = populationDistribution(re);
@@ -601,13 +597,14 @@ void StockStuff()
 			input.Forward();
 			activation.Forward(input.Y);
 
-			p = ((Eigen::MatrixXi)activation.Y.unaryExpr(&zeroOrOne).cast<int>()).data();
+			is = activation.Y.unaryExpr(&zeroOrOne).cast<int>();
+			p = is.data();
 			eMutator = BuyBars(sinceDate, p, features + 1);
-			//hier kann ich die fitness methode einbauen fitness(activation.Y)
 
-			if (eMutator < e)
+			if (eMutator < errors[i])
 			{
 				weights[i] = mutator;
+				errors[i] = eMutator;
 
 				if (eMutator < eMin)
 				{
@@ -625,11 +622,6 @@ void StockStuff()
 
 		}*/
 	} while (true);
-	/*
-		for (size_t i = 0; i < samples; i++)
-		{
-			p[i] = zeroOrOneDistribution(re);
-		}*/
 
 	//n tage vorher rausfischen, ergebnis ist 0 oder 1, bei 1 kaufen, bei 0 weiterlaufen lassen
 	//die summe der investitionen soll möglichst klein sein
